@@ -18,21 +18,28 @@
  */
 package play.modules.elasticsearch.adapter;
 
+import static org.elasticsearch.common.xcontent.XContentFactory.jsonBuilder;
+
+import org.apache.commons.lang.StringUtils;
 import org.elasticsearch.action.admin.indices.create.CreateIndexRequest;
 import org.elasticsearch.action.admin.indices.create.CreateIndexResponse;
+import org.elasticsearch.action.admin.indices.delete.DeleteIndexAction;
+import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
+import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequestBuilder;
 import org.elasticsearch.action.admin.indices.mapping.put.PutMappingRequest;
 import org.elasticsearch.action.admin.indices.mapping.put.PutMappingResponse;
 import org.elasticsearch.action.delete.DeleteResponse;
 import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.client.Requests;
-import org.elasticsearch.common.settings.ImmutableSettings;
+import org.elasticsearch.common.xcontent.ToXContent;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.indices.IndexAlreadyExistsException;
 
 import play.Logger;
 import play.db.Model;
+import play.modules.elasticsearch.ElasticSearch;
 import play.modules.elasticsearch.mapping.MappingUtil;
 import play.modules.elasticsearch.mapping.ModelMapper;
 import play.modules.elasticsearch.util.ExceptionUtil;
@@ -42,154 +49,185 @@ import play.modules.elasticsearch.util.ExceptionUtil;
  */
 public abstract class ElasticSearchAdapter {
 
-	/**
-	 * Start index.
-	 * 
-	 * @param client
-	 *            the client
-	 * @param mapper
-	 *            the model mapper
-	 */
-	public static <T extends Model> void startIndex(Client client, ModelMapper<T> mapper) {
-		createIndex(client, mapper);
-		createType(client, mapper);
-	}
+     * 
+     * @param client
+     *            the client
+     * @param mapper
+     *            the model mapper
+     */
+    public static <T extends Model> void startIndex(Client client, ModelMapper<T> mapper) {
+        if (mapper.getIndexName() != null) {
+            createIndex(client, mapper);
+        }
+        
+        if (mapper.getTypeName() != null) {
+            createType(client, mapper);
+        }
+    }
 
-	/**
-	 * Creates the index.
-	 * 
-	 * @param client
-	 *            the client
-	 * @param mapper
-	 *            the model mapper
-	 */
-	private static void createIndex(Client client, ModelMapper<?> mapper) {
-		String indexName = mapper.getIndexName();
+    /**
+     * Creates the index.
+     * 
+     * @param client
+     *            the client
+     * @param mapper
+     *            the model mapper
+     */
+    private static void createIndex(Client client, ModelMapper<?> mapper) {
+        String indexName = mapper.getIndexName();
 
-		try {
-			
-			XContentBuilder settings = MappingUtil.getSettingsMapper(mapper);
-			
-			Logger.debug("Starting Elastic Search Index %s", indexName);
-			CreateIndexResponse response = client.admin().indices()
-					.create(new CreateIndexRequest(indexName)
-					.settings(ImmutableSettings.settingsBuilder().loadFromSource(settings.string())))
-					.actionGet();
+        try {
+            Logger.debug("Starting Elastic Search Index %s", indexName);
+            CreateIndexResponse response = client.admin().indices().create(new CreateIndexRequest(indexName)).actionGet();
+            Logger.debug("Response: %s", response);
 
-			Logger.debug("Response: %s", response);
+        } catch (IndexAlreadyExistsException iaee) {
+            Logger.debug("Index already exists: %s", indexName);
 
-		} catch (IndexAlreadyExistsException iaee) {
-			Logger.debug("Index already exists: %s", indexName);
+        } catch (Throwable t) {
+            Logger.warn(ExceptionUtil.getStackTrace(t));
+        }
+    }
 
-		} catch (Throwable t) {
-			Logger.warn(ExceptionUtil.getStackTrace(t));
-		}
-	}
+    /**
+     * Creates the type.
+     * 
+     * @param client
+     *            the client
+     * @param mapper
+     *            the model mapper
+     */
+    private static void createType(Client client, ModelMapper<?> mapper) {
+        String indexName = mapper.getIndexName();
+        String typeName = mapper.getTypeName();
 
-	/**
-	 * Creates the type.
-	 * 
-	 * @param client
-	 *            the client
-	 * @param mapper
-	 *            the model mapper
-	 */
-	private static void createType(Client client, ModelMapper<?> mapper) {
-		String indexName = mapper.getIndexName();
-		String typeName = mapper.getTypeName();
+        try {
+            Logger.debug("Create Elastic Search Type %s/%s", indexName, typeName);
+            PutMappingRequest request = Requests.putMappingRequest(indexName).type(typeName);
+            XContentBuilder mapping = MappingUtil.getMapping(mapper);
+            Logger.debug("Type mapping: \n %s", mapping.string());
+            request.source(mapping);
+            PutMappingResponse response = client.admin().indices().putMapping(request).actionGet();
+            Logger.debug("Response: %s", response);
 
-		try {
-			Logger.debug("Create Elastic Search Type %s/%s", indexName, typeName);
-			PutMappingRequest request = Requests.putMappingRequest(indexName).type(typeName);
-			XContentBuilder mapping = MappingUtil.getMapping(mapper);
-			Logger.debug("Type mapping: \n %s", mapping.string());
-			request.source(mapping);
-			PutMappingResponse response = client.admin().indices().putMapping(request).actionGet();
-			Logger.debug("Response: %s", response);
+        } catch (IndexAlreadyExistsException iaee) {
+            Logger.debug("Index already exists: %s", indexName);
 
-		} catch (IndexAlreadyExistsException iaee) {
-			Logger.debug("Index already exists: %s", indexName);
+        } catch (Throwable t) {
+            Logger.warn(ExceptionUtil.getStackTrace(t));
+        }
+    }
 
-		} catch (Throwable t) {
-			Logger.warn(ExceptionUtil.getStackTrace(t));
-		}
-	}
+    /**
+     * Index model.
+     * 
+     * @param <T>
+     *            the generic type
+     * @param client
+     *            the client
+     * @param mapper
+     *            the model mapper
+     * @param model
+     *            the model
+     * @throws Exception
+     *             the exception
+     */
+    public static <T extends Model> void indexModel(Client client, ModelMapper<T> mapper, T model) throws Exception {
+        Logger.debug("Index Model: %s", model);
 
-	/**
-	 * Index model.
-	 * 
-	 * @param <T>
-	 *            the generic type
-	 * @param client
-	 *            the client
-	 * @param mapper
-	 *            the model mapper
-	 * @param model
-	 *            the model
-	 * @throws Exception
-	 *             the exception
-	 */
-	public static <T extends Model> void indexModel(Client client, ModelMapper<T> mapper, T model)
-			throws Exception {
-		Logger.debug("Index Model: %s", model);
+        // Check Client
+        if (client == null) {
+            Logger.error("Elastic Search Client is null, aborting");
+            return;
+        }
 
-		// Check Client
-		if (client == null) {
-			Logger.error("Elastic Search Client is null, aborting");
-			return;
-		}
+        // Define Content Builder
+        XContentBuilder contentBuilder = null;
 
-		// Define Content Builder
-		XContentBuilder contentBuilder = null;
+        // Index Model
+        try {
+            // Define Index Name
+            String indexName = mapper.getIndexName();
+            String typeName = mapper.getTypeName();
+            String documentId = mapper.getDocumentId(model);
+            Logger.debug("Index Name: %s", indexName);
 
-		// Index Model
-		try {
-			// Define Index Name
-			String indexName = mapper.getIndexName();
-			String typeName = mapper.getTypeName();
-			String documentId = mapper.getDocumentId(model);
-			Logger.debug("Index Name: %s", indexName);
+            contentBuilder = XContentFactory.jsonBuilder().prettyPrint();
+            mapper.addModel(model, contentBuilder);
+            Logger.debug("Index json: %s", contentBuilder.string());
+            IndexResponse response = client.prepareIndex(indexName, typeName, documentId).setSource(contentBuilder).execute().actionGet();
 
-			contentBuilder = XContentFactory.jsonBuilder().prettyPrint();
-			mapper.addModel(model, contentBuilder);
-			Logger.debug("Index json: %s", contentBuilder.string());
-			IndexResponse response = client.prepareIndex(indexName, typeName, documentId)
-					.setSource(contentBuilder).execute().actionGet();
+            // Log Debug
+            Logger.info("Index Response: %s", response);
 
-			// Log Debug
-			Logger.info("Index Response: %s", response);
+        } finally {
+            if (contentBuilder != null) {
+                contentBuilder.close();
+            }
+        }
+    }
 
-		} finally {
-			if (contentBuilder != null) {
-				contentBuilder.close();
-			}
-		}
-	}
+    /**
+     * Delete model.
+     * 
+     * @param <T>
+     *            the generic type
+     * @param client
+     *            the client
+     * @param mapper
+     *            the model mapper
+     * @param model
+     *            the model
+     * @throws Exception
+     *             the exception
+     */
+    public static <T extends Model> void deleteModel(Client client, ModelMapper<T> mapper, T model) throws Exception {
+        Logger.debug("Delete Model: %s", model);
+        String indexName = mapper.getIndexName();
+        String typeName = mapper.getTypeName();
+        String documentId = mapper.getDocumentId(model);
+        DeleteResponse response = client.prepareDelete(indexName, typeName, documentId).setOperationThreaded(false).execute().actionGet();
+        Logger.debug("Delete Response: %s", response);
 
-	/**
-	 * Delete model.
-	 * 
-	 * @param <T>
-	 *            the generic type
-	 * @param client
-	 *            the client
-	 * @param mapper
-	 *            the model mapper
-	 * @param model
-	 *            the model
-	 * @throws Exception
-	 *             the exception
-	 */
-	public static <T extends Model> void deleteModel(Client client, ModelMapper<T> mapper, T model)
-			throws Exception {
-		Logger.debug("Delete Model: %s", model);
-		String indexName = mapper.getIndexName();
-		String typeName = mapper.getTypeName();
-		String documentId = mapper.getDocumentId(model);
-		DeleteResponse response = client.prepareDelete(indexName, typeName, documentId)
-				.setOperationThreaded(false).execute().actionGet();
-		Logger.debug("Delete Response: %s", response);
+    }
 
-	}
+    public static void deleteIndex(Client client, ModelMapper<Model> mapper) {
+        String index = mapper.getIndexName();
+        ElasticSearch.client().admin().indices().delete(Requests.deleteIndexRequest(index)).actionGet();
+    }
 
+    public static void deleteRiver(Client client, ModelMapper<Model> mapper) {
+        String index = mapper.getIndexName();
+        ElasticSearch.client().admin().indices().deleteMapping(Requests.deleteMappingRequest("river_" + index)).actionGet();
+    }
+
+    public static void deleteAllRivers(Client client) {
+        ElasticSearch.client().admin().indices().delete(Requests.deleteIndexRequest("_river")).actionGet();
+    }
+
+    public static void startRiver(Client client, ModelMapper<Model> mapper, String driver, String url, String user, String password) {
+        String index = mapper.getIndexName();
+        String type = mapper.getTypeName();
+        String sql = mapper.getRiverSQL();
+        String riverIndex = "_river";
+        String riverType = "river_" + type;
+        String riverId = "_meta";
+
+        if (StringUtils.isEmpty(sql)) {
+            Logger.info("Unable to create river %s/%s for %s/%s SQL missing", riverIndex, riverType, index, type);
+            return;
+        }
+
+        Logger.info("Create river %s/%s for %s/%s Driver: %s Url: %s User: %s Password: %s SQL: %s", riverIndex, riverType, index, type, driver, url, user, password, sql);
+
+        try {
+            XContentBuilder json = jsonBuilder().startObject().field("type", "jdbc").startObject("jdbc").field("driver", driver).field("url", url).field("user", user)
+                    .field("password", password).field("sql", sql).endObject().startObject("index").field("index", index).field("type", type).endObject().endObject();
+
+            IndexResponse response = ElasticSearch.client().prepareIndex(riverIndex, riverType, riverId).setSource(json).execute().actionGet();
+            Logger.debug("River Response: %s", response);
+        } catch (Exception e) {
+            Logger.error("Failed to create river", e);
+        }
+    }
 }

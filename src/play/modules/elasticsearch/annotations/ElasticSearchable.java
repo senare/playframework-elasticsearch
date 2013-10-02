@@ -23,8 +23,11 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-import play.modules.elasticsearch.annotations.analysis.ElasticSearchAnalysis;
+import org.elasticsearch.common.xcontent.XContentBuilder;
 
+import play.modules.elasticsearch.mapping.MappingException;
+import play.modules.elasticsearch.mapping.ModelMapper;
+import play.modules.elasticsearch.mapping.impl.PlayModelMapper;
 
 /**
  * The Interface ElasticSearchable.
@@ -32,8 +35,9 @@ import play.modules.elasticsearch.annotations.analysis.ElasticSearchAnalysis;
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface ElasticSearchable {
-	/** The index name to use */
 	String indexName() default "";
 	
-	ElasticSearchAnalysis analysis() default @ElasticSearchAnalysis();
+	String riverSQL() default "";
+
+	Class mapper() default void.class;  
 }

@@ -1,23 +1,19 @@
+<<<<<<< Updated upstream
 package play.modules.elasticsearch.transformer;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
 
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.search.SearchHit;
 
 import play.Logger;
-import play.Play;
 import play.data.binding.Binder;
 import play.db.Model;
 import play.db.jpa.JPQL;
 import play.exceptions.UnexpectedException;
-import play.modules.elasticsearch.ElasticSearchPlugin;
 import play.modules.elasticsearch.search.SearchResults;
 
 /**
@@ -53,14 +49,6 @@ public class JPATransformer<T extends Model> implements Transformer<T> {
 			keyType = factory.keyType();
 		}
 
-		// Store object ids categorized by model
-		Map<Class<T>, List<Object>> allIds = new HashMap<Class<T>, List<Object>>();
-		// Store original order
-		Map<Class<T>, Map<Object, Integer>> order = new HashMap<Class<T>, Map<Object, Integer>>();
-		// Store scores and sortValues
-		List<Float> scores = new ArrayList<Float>();
-		List<Object[]> sortValues = new ArrayList<Object[]>();
-		Integer counter = 0;
 		// Loop on each one
 		for (SearchHit h : searchResponse.hits()) {
 			try {

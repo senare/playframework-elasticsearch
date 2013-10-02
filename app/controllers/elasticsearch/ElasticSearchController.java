@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
+import org.apache.commons.lang.StringUtils;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 
@@ -316,8 +317,7 @@ public class ElasticSearchController extends Controller {
 		 */
 		private BoolQueryBuilder buildQueryBuilder(String search, String searchFields, String where) {
 			BoolQueryBuilder qb = boolQuery();
-
-			if(search == null || search.isEmpty()) {
+			if(StringUtils.isEmpty(search)) {
 				qb.must(QueryBuilders.matchAllQuery());
 			} else {
 				// FIXME Currently we search in all fields and ignore searchFields

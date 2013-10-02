@@ -20,6 +20,14 @@ public interface ModelMapper<M> {
 	 */
 	public Class<M> getModelClass();
 
+	 /**
+     * Gets the SQL used to setup a JDBC river
+     * 
+     * @return the SQL statement
+     */
+
+	public String getRiverSQL();
+
 	/**
 	 * Gets the index name
 	 * 
