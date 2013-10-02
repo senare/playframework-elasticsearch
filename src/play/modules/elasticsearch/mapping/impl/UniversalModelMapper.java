@@ -30,6 +30,11 @@ public class UniversalModelMapper implements ModelMapper<Model> {
 	public String getTypeName() {
 		return "_all";
 	}
+	
+    @Override
+    public String getRiverSQL() {
+        return null;
+    }
 
 	@Override
 	public String getDocumentId(final Model model) {
@@ -54,5 +59,4 @@ public class UniversalModelMapper implements ModelMapper<Model> {
 	public void addSettings(XContentBuilder builder) throws IOException {
 		throw new UnsupportedOperationException("Model mapping is not supported with UniversalModelMapper");
 	}
-
 }

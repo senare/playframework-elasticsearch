@@ -1,16 +1,6 @@
 package play.modules.elasticsearch.mapping;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
-import java.util.Collection;
-
-import play.Logger;
-import play.modules.elasticsearch.annotations.ElasticSearchEmbedded;
-import play.modules.elasticsearch.annotations.ElasticSearchable;
-import play.modules.elasticsearch.mapping.impl.CollectionFieldMapper;
-import play.modules.elasticsearch.mapping.impl.EmbeddedFieldMapper;
-import play.modules.elasticsearch.mapping.impl.PlayModelMapper;
-import play.modules.elasticsearch.mapping.impl.SimpleFieldMapper;
 
 /**
  * Factory for retrieving {@link ModelMapper}s and {@link FieldMapper}s
@@ -27,25 +17,7 @@ public interface MapperFactory {
 	 *             in case of mapping problems
 	 * @return the model mapper
 	 */
-	@SuppressWarnings("unchecked")
-	public static <M> ModelMapper<M> getMapper(Class<M> clazz) throws MappingException {
-        if (!clazz.isAnnotationPresent(ElasticSearchable.class)) {
-            throw new IllegalArgumentException("Class must be annotated with @ElasticSearchable");
-        }
-
-        ElasticSearchable meta = clazz.getAnnotation(ElasticSearchable.class);
-		if(meta != null && meta.mapper() != void.class){
-		    try {
-		        return (ModelMapper<M>) ((Constructor<ModelMapper<M>>) meta.mapper().getDeclaredConstructor(Class.class)).newInstance(clazz);
-            } catch (Exception e) {
-                throw new MappingException("Unable to create mapper from class:" + meta.mapper(), e);
-            }
-		} else if (play.db.Model.class.isAssignableFrom(clazz)) {
-			return (ModelMapper<M>) new PlayModelMapper<play.db.Model>((Class<play.db.Model>) clazz);
-		} else {
-			throw new MappingException("No mapper available for non-play.db.Model models at this time");
-		}
-	}
+	<M> ModelMapper<M> getMapper(Class<M> clazz) throws MappingException;
 
 	/**
 	 * Gets a {@link FieldMapper} for the specified field

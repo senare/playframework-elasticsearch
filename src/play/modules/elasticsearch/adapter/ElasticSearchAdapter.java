@@ -49,7 +49,7 @@ import play.modules.elasticsearch.util.ExceptionUtil;
  */
 public abstract class ElasticSearchAdapter {
 
-     * 
+    /** 
      * @param client
      *            the client
      * @param mapper

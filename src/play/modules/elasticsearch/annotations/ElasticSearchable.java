@@ -25,6 +25,7 @@ import java.lang.annotation.Target;
 
 import org.elasticsearch.common.xcontent.XContentBuilder;
 
+import play.modules.elasticsearch.annotations.analysis.ElasticSearchAnalysis;
 import play.modules.elasticsearch.mapping.MappingException;
 import play.modules.elasticsearch.mapping.ModelMapper;
 import play.modules.elasticsearch.mapping.impl.PlayModelMapper;
@@ -36,6 +37,8 @@ import play.modules.elasticsearch.mapping.impl.PlayModelMapper;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface ElasticSearchable {
 	String indexName() default "";
+	
+	ElasticSearchAnalysis analysis() default @ElasticSearchAnalysis();
 	
 	String riverSQL() default "";
 

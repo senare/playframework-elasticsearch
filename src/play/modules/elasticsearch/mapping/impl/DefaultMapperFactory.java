@@ -1,9 +1,11 @@
 package play.modules.elasticsearch.mapping.impl;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.util.Collection;
 
 import play.modules.elasticsearch.annotations.ElasticSearchEmbedded;
+import play.modules.elasticsearch.annotations.ElasticSearchable;
 import play.modules.elasticsearch.mapping.FieldMapper;
 import play.modules.elasticsearch.mapping.MapperFactory;
 import play.modules.elasticsearch.mapping.MappingException;
@@ -36,12 +38,17 @@ public class DefaultMapperFactory implements MapperFactory {
 			throw new MappingException("Class must be annotated with @ElasticSearchable");
 		}
 
-		if (play.db.Model.class.isAssignableFrom(clazz)) {
-			return (ModelMapper<M>) new PlayModelMapper<play.db.Model>(this,
-					(Class<play.db.Model>) clazz);
+        ElasticSearchable meta = clazz.getAnnotation(ElasticSearchable.class);
+        if (meta != null && meta.mapper() != void.class) {
+            try {
+                return (ModelMapper<M>) (meta.mapper().getDeclaredConstructor(MapperFactory.class, Class.class)).newInstance(clazz);
+            } catch (Exception e) {
+                throw new MappingException("Unable to create mapper from class:" + meta.mapper(), e);
+            }
+        } else if (play.db.Model.class.isAssignableFrom(clazz)) {
+			return (ModelMapper<M>) new PlayModelMapper<play.db.Model>(this, (Class<play.db.Model>) clazz);
 		} else {
-			throw new MappingException(
-					"No mapper available for non-play.db.Model models at this time");
+			throw new MappingException("No mapper available for non-play.db.Model models at this time");
 		}
 	}
 
@@ -57,9 +64,7 @@ public class DefaultMapperFactory implements MapperFactory {
 	 * @return the field mapper
 	 */
 	public <M> FieldMapper<M> getMapper(Field field) throws MappingException {
-
 		return getMapper(field, null);
-
 	}
 
 	/**
@@ -84,9 +89,6 @@ public class DefaultMapperFactory implements MapperFactory {
 
 		} else {
 			return new SimpleFieldMapper<M>(field, prefix);
-
 		}
-
 	}
-
 }

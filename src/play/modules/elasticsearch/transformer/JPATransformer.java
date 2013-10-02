@@ -1,19 +1,23 @@
-<<<<<<< Updated upstream
 package play.modules.elasticsearch.transformer;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.search.SearchHit;
 
 import play.Logger;
+import play.Play;
 import play.data.binding.Binder;
 import play.db.Model;
 import play.db.jpa.JPQL;
 import play.exceptions.UnexpectedException;
+import play.modules.elasticsearch.ElasticSearchPlugin;
 import play.modules.elasticsearch.search.SearchResults;
 
 /**
@@ -38,7 +42,7 @@ public class JPATransformer<T extends Model> implements Transformer<T> {
 	@Override
 	public SearchResults<T> toSearchResults(SearchResponse searchResponse, final Class<T> clazz) {
 		// Get Total Records Found
-		long count = searchResponse.hits().totalHits();
+		long count = searchResponse.getHits().totalHits();
 
 		// Get key information
 		Class<T> hitClazz = clazz;
@@ -49,8 +53,16 @@ public class JPATransformer<T extends Model> implements Transformer<T> {
 			keyType = factory.keyType();
 		}
 
+		// Store object ids categorized by model
+		Map<Class<T>, List<Object>> allIds = new HashMap<Class<T>, List<Object>>();
+		// Store original order
+		Map<Class<T>, Map<Object, Integer>> order = new HashMap<Class<T>, Map<Object, Integer>>();
+		// Store scores and sortValues
+		List<Float> scores = new ArrayList<Float>();
+		List<Object[]> sortValues = new ArrayList<Object[]>();
+		Integer counter = 0;
 		// Loop on each one
-		for (SearchHit h : searchResponse.hits()) {
+		for (SearchHit h : searchResponse.getHits()) {
 			try {
 				// get key information if we work on general model
 				if (clazz.equals(Model.class)) {
@@ -112,7 +124,7 @@ public class JPATransformer<T extends Model> implements Transformer<T> {
 		Logger.debug("Models after sorting: %s", objects);
 
 		// Return Results
-		return new SearchResults<T>(count, objects, scores, sortValues, searchResponse.facets());
+		return new SearchResults<T>(count, objects, scores, sortValues, searchResponse.getFacets());
 	}
 
 	private boolean shouldFailOnMissingObjects() {

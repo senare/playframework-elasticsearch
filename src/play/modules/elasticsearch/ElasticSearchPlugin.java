@@ -46,8 +46,10 @@ import play.modules.elasticsearch.ElasticSearchIndexEvent.Type;
 import play.modules.elasticsearch.adapter.ElasticSearchAdapter;
 import play.modules.elasticsearch.annotations.ElasticSearchable;
 import play.modules.elasticsearch.mapping.MapperFactory;
+import play.modules.elasticsearch.mapping.MappingException;
 import play.modules.elasticsearch.mapping.MappingUtil;
 import play.modules.elasticsearch.mapping.ModelMapper;
+import play.modules.elasticsearch.mapping.impl.DefaultMapperFactory;
 import play.modules.elasticsearch.util.ReflectionUtil;
 import play.mvc.Router;
 
@@ -59,7 +61,10 @@ public class ElasticSearchPlugin extends PlayPlugin {
 
     /** The started. */
     private static boolean started = false;
-
+    
+    /** The mapper factory */
+    private static MapperFactory mapperFactory = (MapperFactory) new DefaultMapperFactory();
+    
     /** The mappers index. */
     private static Map<Class<?>, ModelMapper<?>> mappers = null;
 
@@ -70,6 +75,9 @@ public class ElasticSearchPlugin extends PlayPlugin {
 
     private static Set<Class<? extends Model>> eligibleClasses = null;
 
+    /** Index type -> Class lookup */
+    private static Map<String, Class<?>> modelLookup = null;
+    
     /** The client. */
     private static Client client = null;
 
@@ -273,13 +281,14 @@ public class ElasticSearchPlugin extends PlayPlugin {
     }
     
     @SuppressWarnings("unchecked")
-    public static <M> ModelMapper<M> getMapper(Class<M> clazz) {
+    public static <M> ModelMapper<M> getMapper(final Class<M> clazz) {
         if (mappers.containsKey(clazz)) {
             return (ModelMapper<M>) mappers.get(clazz);
         }
 
-        ModelMapper<M> mapper = MapperFactory.getMapper(clazz);
+        final ModelMapper<M> mapper = mapperFactory.getMapper(clazz);
         mappers.put(clazz, mapper);
+        modelLookup.put(mapper.getTypeName(), clazz);
 
         return mapper;
     }
@@ -362,5 +371,29 @@ public class ElasticSearchPlugin extends PlayPlugin {
             }
         }
         return result;
+    }
+    
+    /**
+     * Looks up the model class based on the index type name
+     * 
+     * @param indexType
+     * @return Class of the Model
+     */
+    public static Class<?> lookupModel(final String indexType) {
+        final Class<?> clazz = modelLookup.get(indexType);
+        if (clazz != null) { // we have not cached this model yet
+            return clazz;
+        }
+        final List<Class> searchableModels = Play.classloader.getAnnotatedClasses(ElasticSearchable.class);
+        for (final Class searchableModel : searchableModels) {
+            try {
+                if (indexType.equals(getMapper(searchableModel).getTypeName())) {
+                    return searchableModel;
+                }
+            } catch (final MappingException ex) {
+                // mapper can not be retrieved
+            }
+        }
+        throw new IllegalArgumentException("Type name '" + indexType + "' is not searchable!");
     }
 }

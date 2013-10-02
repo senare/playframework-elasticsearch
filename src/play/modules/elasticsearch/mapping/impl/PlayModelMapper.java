@@ -10,12 +10,16 @@ import javax.persistence.Transient;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
-import org.codehaus.groovy.util.StringUtil;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 
 import play.db.Model;
 import play.modules.elasticsearch.annotations.ElasticSearchIgnore;
+import play.modules.elasticsearch.annotations.ElasticSearchTtl;
 import play.modules.elasticsearch.annotations.ElasticSearchable;
+import play.modules.elasticsearch.annotations.analysis.ElasticSearchAnalysis;
+import play.modules.elasticsearch.annotations.analysis.ElasticSearchAnalyzer;
+import play.modules.elasticsearch.annotations.analysis.ElasticSearchFilter;
+import play.modules.elasticsearch.annotations.analysis.ElasticSearchSetting;
 import play.modules.elasticsearch.mapping.FieldMapper;
 import play.modules.elasticsearch.mapping.MapperFactory;
 import play.modules.elasticsearch.mapping.ModelMapper;
@@ -29,21 +33,21 @@ import play.modules.elasticsearch.util.ReflectionUtil;
  */
 public class PlayModelMapper<M extends Model> implements ModelMapper<M> {
 
-    /** The play-specific fields to ignore. */
-    private static List<String> IGNORE_FIELDS = new ArrayList<String>();
-    static {
-        IGNORE_FIELDS.add("avoidCascadeSaveLoops");
-        IGNORE_FIELDS.add("willBeSaved");
-        IGNORE_FIELDS.add("serialVersionId");
-        IGNORE_FIELDS.add("serialVersionUID");
-    }
+	/** The play-specific fields to ignore. */
+	private static List<String> IGNORE_FIELDS = new ArrayList<String>();
+	static {
+		IGNORE_FIELDS.add("avoidCascadeSaveLoops");
+		IGNORE_FIELDS.add("willBeSaved");
+		IGNORE_FIELDS.add("serialVersionId");
+		IGNORE_FIELDS.add("serialVersionUID");
+	}
 
-    private final Class<M> clazz;
-    private final String riverSQL;
-    private final String indexNameFromMeta;
-    private final List<FieldMapper<M>> mapping;
+	private final Class<M> clazz;
+	private final String riverSQL;
+	private final String indexNameFromMeta;
+	private final List<FieldMapper<M>> mapping;
 
-    public PlayModelMapper(Class<M> clazz) {
+	public PlayModelMapper(MapperFactory factory, Class<M> clazz) {
         Validate.notNull(clazz, "Clazz cannot be null");
         this.clazz = clazz;
 
@@ -67,7 +71,7 @@ public class PlayModelMapper<M extends Model> implements ModelMapper<M> {
         }
         
         // Create mapping
-        mapping = getMapping(clazz);
+        mapping = getMapping(factory, clazz);
     }
 
     static boolean shouldIgnoreField(Field field) {
@@ -91,91 +95,159 @@ public class PlayModelMapper<M extends Model> implements ModelMapper<M> {
         return field.isAnnotationPresent(ElasticSearchIgnore.class);
     }
 
-    /**
-     * Gets a list of {@link FieldMapper}s for the given model class
-     * 
-     * @param <M>
-     *            the model type
-     * @param clazz
-     *            the model class
-     * @return the list of FieldMappers
-     */
-    private static final <M extends Model> List<FieldMapper<M>> getMapping(Class<M> clazz) {
-        List<FieldMapper<M>> mapping = new ArrayList<FieldMapper<M>>();
 
-        List<Field> indexableFields = ReflectionUtil.getAllFields(clazz);
+	/**
+	 * Gets a list of {@link FieldMapper}s for the given model class
+	 * 
+	 * @param <M>
+	 *            the model type
+	 * @param factory
+	 *            the mapper factory
+	 * @param clazz
+	 *            the model class
+	 * @return the list of FieldMappers
+	 */
+	private static final <M extends Model> List<FieldMapper<M>> getMapping(MapperFactory factory, Class<M> clazz) {
+		List<FieldMapper<M>> mapping = new ArrayList<FieldMapper<M>>();
 
-        for (Field field : indexableFields) {
+		List<Field> indexableFields = ReflectionUtil.getAllFields(clazz);
 
-            // Exclude fields on our ignore list
-            if (shouldIgnoreField(field) || userRequestedIgnoreField(field)) {
-                continue;
-            }
+		for (Field field : indexableFields) {
 
-            FieldMapper<M> mapper = MapperFactory.getMapper(field);
-            mapping.add(mapper);
-        }
+			// Exclude fields on our ignore list
+			if (shouldIgnoreField(field) || userRequestedIgnoreField(field)) {
+				continue;
+			}
 
-        return mapping;
-    }
+			FieldMapper<M> mapper = factory.getMapper(field);
+			mapping.add(mapper);
+		}
 
-    @Override
-    public Class<M> getModelClass() {
-        return clazz;
-    }
-    
-    @Override
-    public String getRiverSQL() {
-        return riverSQL;
-    }
-    
+		return mapping;
+	}
+
+	@Override
+	public Class<M> getModelClass() {
+		return clazz;
+	}
+
     @Override
     public String getIndexName() {
         return indexNameFromMeta;
     }
 
     @Override
-    public String getTypeName() {
-        return clazz.getName().toLowerCase().trim().replace('.', '_');
+    public String getRiverSQL() {
+        return riverSQL;
     }
+    
+	@Override
+	public String getTypeName() {
+		return clazz.getName().toLowerCase().trim().replace('.', '_');
+	}
 
-    @Override
-    public String getDocumentId(M model) {
-        return String.valueOf(model._key());
-    }
+	@Override
+	public String getDocumentId(M model) {
+		return String.valueOf(model._key());
+	}
 
-    @Override
-    public void addMapping(XContentBuilder builder) throws IOException {
-        builder.startObject(getTypeName());
-        builder.startObject("properties");
+	@Override
+	public void addMapping(XContentBuilder builder) throws IOException {
+		builder.startObject(getTypeName());
+		if (clazz.isAnnotationPresent(ElasticSearchTtl.class)) {
+			String ttlValue = clazz.getAnnotation(ElasticSearchTtl.class).value();
+			builder.startObject("_ttl");
+			builder.field("enabled", true);
+			builder.field("default", ttlValue);
+			builder.endObject();
+		}
+		
+		builder.startObject("properties");
 
-        for (FieldMapper<M> field : mapping) {
-            field.addToMapping(builder);
-        }
+		for (FieldMapper<M> field : mapping) {
+			field.addToMapping(builder);
+		}
 
-        builder.endObject();
-        builder.endObject();
-    }
+		builder.endObject();
+		builder.endObject();
+	}
+	
+	public void addSettings(XContentBuilder builder) throws IOException{
 
-    @Override
-    public void addModel(M model, XContentBuilder builder) throws IOException {
-        builder.startObject();
+		if(clazz.getAnnotation(ElasticSearchable.class).analysis() == null)
+			return;
 
-        for (FieldMapper<M> field : mapping) {
-            field.addToDocument(model, builder);
-        }
+		ElasticSearchAnalysis analysis = clazz.getAnnotation(ElasticSearchable.class).analysis();
+		
+		if((analysis.analyzers() == null || analysis.analyzers().length < 1) && 
+		   (analysis.filters() == null || analysis.filters().length < 1))
+			return;
+		
+		builder.startObject("analysis");
+		
+		if(analysis.analyzers() != null && analysis.analyzers().length > 0){
+			builder.startObject("analyzer");
 
-        builder.endObject();
-    }
+			for (ElasticSearchAnalyzer analyzer : analysis.analyzers()) {
+				
+				builder.startObject(analyzer.name());
+				
+				if(analyzer.tokenizer() != null)
+					builder.field("tokenizer", analyzer.tokenizer());
+				
+				if(analyzer.filtersNames() != null && analyzer.filtersNames().length > 0)
+					builder.field("filter", analyzer.filtersNames());
+				
+				builder.endObject();
+			}
+			
+			builder.endObject();
+		}
+		
+		if(analysis.filters() != null && analysis.filters().length > 0){
+			
+			builder.startObject("filter");
+		
+			for (ElasticSearchFilter filter : analysis.filters()) {
+				
+				builder.startObject(filter.name());
+				
+				builder.field("type", filter.typeName());
+				
+				for (ElasticSearchSetting setting : filter.settings()) {
+					
+					builder.field(setting.name(), setting.value());
+					
+				}
+				
+				builder.endObject();
+			}
+			
+			builder.endObject();
+		}
+		
+		builder.endObject();
+	}
 
-    @Override
-    public M createModel(Map<String, Object> map) {
-        M model = ReflectionUtil.newInstance(clazz);
+	@Override
+	public void addModel(M model, XContentBuilder builder) throws IOException {
+		builder.startObject();
 
-        for (FieldMapper<M> field : mapping) {
-            field.inflate(model, map);
-        }
+		for (FieldMapper<M> field : mapping) {
+			field.addToDocument(model, builder);
+		}
 
-        return model;
-    }
+		builder.endObject();
+	}
+
+	@Override
+	public M createModel(Map<String, Object> map) {
+		M model = ReflectionUtil.newInstance(clazz);
+
+		for (FieldMapper<M> field : mapping) {
+			field.inflate(model, map);
+		}
+
+		return model;
+	}
 }
