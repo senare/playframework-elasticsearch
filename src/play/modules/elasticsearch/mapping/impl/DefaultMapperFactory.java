@@ -41,7 +41,9 @@ public class DefaultMapperFactory implements MapperFactory {
         ElasticSearchable meta = clazz.getAnnotation(ElasticSearchable.class);
         if (meta != null && meta.mapper() != void.class) {
             try {
-                return (ModelMapper<M>) (meta.mapper().getDeclaredConstructor(MapperFactory.class, Class.class)).newInstance(clazz);
+            	
+                Constructor declaredConstructor = meta.mapper().getDeclaredConstructor(MapperFactory.class, Class.class);
+				return (ModelMapper<M>) declaredConstructor.newInstance(this, clazz);
             } catch (Exception e) {
                 throw new MappingException("Unable to create mapper from class:" + meta.mapper(), e);
             }

@@ -288,7 +288,7 @@ public class ElasticSearchPlugin extends PlayPlugin {
 
         final ModelMapper<M> mapper = mapperFactory.getMapper(clazz);
         mappers.put(clazz, mapper);
-        modelLookup.put(mapper.getTypeName(), clazz);
+        //modelLookup.put(mapper.getTypeName(), clazz);
 
         return mapper;
     }
